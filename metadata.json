@@ -1,0 +1,5 @@
+{
+  "name": "SmartGrade AI - Assignment Corrector",
+  "description": "A sophisticated assignment correction platform that uses AI to provide instant feedback to students and automated grading for proctors, featuring a secure permission-based access system.",
+  "requestFramePermissions": []
+}

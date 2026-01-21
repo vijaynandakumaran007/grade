@@ -56,15 +56,24 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+    try {
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        setCurrentUser(JSON.parse(savedUser));
+      }
+    } catch (err) {
+      console.error("Hydration Error:", err);
+      localStorage.removeItem('currentUser'); // Clean up corrupted state
     }
   }, []);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
+    try {
+      localStorage.setItem('currentUser', JSON.stringify(user));
+    } catch (err) {
+      console.error("Failed to save login session:", err);
+    }
   };
 
   const handleLogout = () => {
@@ -74,7 +83,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-slate-50">
         {currentUser && <Navbar user={currentUser} onLogout={handleLogout} />}
         <main className="flex-grow">
           <Routes>

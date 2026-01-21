@@ -11,35 +11,29 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [tasks, setTasks] = useState<AssignmentTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<AssignmentTask | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mySubmissions, setMySubmissions] = useState<Submission[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
   }, []);
 
   const loadData = () => {
-    const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
-    setTasks(allTasks);
+    try {
+      const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
+      setTasks(allTasks);
 
-    const allSubs: Submission[] = JSON.parse(localStorage.getItem('assignments') || '[]');
-    setMySubmissions(allSubs.filter(s => s.studentId === user.id));
+      const allSubs: Submission[] = JSON.parse(localStorage.getItem('assignments') || '[]');
+      setMySubmissions(allSubs.filter(s => s.studentId === user.id));
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+    }
   };
 
   const startTask = (task: AssignmentTask) => {
     setSelectedTask(task);
     setFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,15 +43,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         alert('Please upload a PDF file.');
         return;
       }
-      
-      // Cleanup previous preview URL if it exists
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-
-      const url = URL.createObjectURL(selectedFile);
       setFile(selectedFile);
-      setPreviewUrl(url);
     }
   };
 
@@ -89,7 +75,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         taskTitle: selectedTask.title,
         studentId: user.id,
         studentName: user.name,
-        answers: [], // Now handled via PDF evaluation
+        answers: [],
         feedback: result.feedback,
         score: result.score,
         submittedAt: new Date().toISOString(),
@@ -101,15 +87,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       
       setSelectedTask(null);
       setFile(null);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-      }
       loadData();
       alert('PDF assignment analyzed and graded by AI!');
     } catch (error) {
-      console.error(error);
-      alert('Error during PDF analysis. Please try again.');
+      console.error("Submission Error:", error);
+      alert('Error during PDF analysis. Please check your internet connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -126,7 +108,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               <div className="p-6 bg-indigo-600 text-white">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="text-xl font-bold">{selectedTask.title}</h3>
-                  <button onClick={() => setSelectedTask(null)} className="text-indigo-200 hover:text-white">Cancel</button>
+                  <button onClick={() => setSelectedTask(null)} className="text-indigo-200 hover:text-white transition-colors">Cancel</button>
                 </div>
                 <p className="text-xs text-indigo-100">{selectedTask.instructions}</p>
               </div>
@@ -142,62 +124,36 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     ))}
                   </ul>
 
-                  {!previewUrl ? (
-                    <div 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="mt-6 border-2 border-dashed border-gray-300 hover:border-indigo-300 hover:bg-gray-50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all"
-                    >
-                      <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        className="hidden" 
-                        accept="application/pdf"
-                        onChange={handleFileChange}
-                      />
-                      <svg className="w-12 h-12 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm font-bold text-gray-700">Upload Assignment PDF</span>
-                      <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">Click to select or drag and drop</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-bold text-indigo-600 uppercase">Document Preview</h4>
-                        <button 
-                          type="button" 
-                          onClick={() => {
-                            setFile(null);
-                            if (previewUrl) URL.revokeObjectURL(previewUrl);
-                            setPreviewUrl(null);
-                          }}
-                          className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase"
-                        >
-                          Change File
-                        </button>
-                      </div>
-                      <div className="relative w-full h-64 border border-gray-200 rounded-xl overflow-hidden bg-gray-50 shadow-inner">
-                        <iframe 
-                          src={previewUrl} 
-                          className="w-full h-full border-none"
-                          title="PDF Preview"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
-                        <svg className="w-4 h-4 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                        </svg>
-                        <span className="text-xs font-medium text-indigo-900 truncate flex-grow">{file?.name}</span>
-                      </div>
-                    </div>
-                  )}
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`mt-6 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all ${
+                      file ? 'border-emerald-300 bg-emerald-50' : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="application/pdf"
+                      onChange={handleFileChange}
+                    />
+                    <svg className={`w-12 h-12 mb-3 ${file ? 'text-emerald-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-sm font-bold text-gray-700 text-center truncate w-full px-2">
+                      {file ? file.name : 'Upload Assignment PDF'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">
+                      {file ? 'Click to change file' : 'Click to select or drag and drop'}
+                    </span>
+                  </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isSubmitting || !file}
                   className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                    (isSubmitting || !file) ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                    (isSubmitting || !file) ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
                 >
                   {isSubmitting ? (
@@ -223,7 +179,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                 tasks.map(task => {
                   const alreadyDone = mySubmissions.some(s => s.taskId === task.id);
                   return (
-                    <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group">
+                    <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-all">
                       <div>
                         <h4 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{task.title}</h4>
                         <p className="text-xs text-gray-500">{task.questions.length} Questions</p>
@@ -265,6 +221,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                         <div className="text-sm font-bold text-indigo-600">Score: {sub.score}%</div>
                       </div>
                       <p className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap">{sub.feedback}</p>
+                      <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
+                        <span className="text-[10px] text-gray-400">Submitted on {new Date(sub.submittedAt).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   </div>
                 </div>

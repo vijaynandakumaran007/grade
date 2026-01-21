@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Submission, AssignmentTask, Answer } from '../types';
+import { User, Submission, AssignmentTask } from '../types';
 import { gradeSubmission } from '../geminiService';
 
 interface StudentDashboardProps {
@@ -27,7 +27,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       const allSubs: Submission[] = JSON.parse(localStorage.getItem('assignments') || '[]');
       setMySubmissions(allSubs.filter(s => s.studentId === user.id));
     } catch (err) {
-      console.error("Failed to load dashboard data:", err);
+      console.error("Dashboard Load Error:", err);
     }
   };
 
@@ -40,7 +40,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       if (selectedFile.type !== 'application/pdf') {
-        alert('Please upload a PDF file.');
+        alert('Validation Error: Please upload a standard PDF file.');
         return;
       }
       setFile(selectedFile);
@@ -53,7 +53,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       reader.readAsDataURL(file);
       reader.onload = () => {
         const base64String = reader.result as string;
-        // Remove data URL prefix (e.g., "data:application/pdf;base64,")
         resolve(base64String.split(',')[1]);
       };
       reader.onerror = error => reject(error);
@@ -88,10 +87,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       setSelectedTask(null);
       setFile(null);
       loadData();
-      alert('PDF assignment analyzed and graded by AI!');
-    } catch (error) {
-      console.error("Submission Error:", error);
-      alert('Error during PDF analysis. Please check your internet connection and try again.');
+      alert('Success: Your assignment was graded by SmartGrade AI!');
+    } catch (error: any) {
+      console.error("Submission Failure:", error);
+      alert(`Submission Error: ${error.message || 'The AI service is temporarily unavailable. Please try again later.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -101,20 +100,19 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Task Selection / Submission */}
         <div className="lg:col-span-1">
           {selectedTask ? (
             <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-indigo-100">
               <div className="p-6 bg-indigo-600 text-white">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="text-xl font-bold">{selectedTask.title}</h3>
-                  <button onClick={() => setSelectedTask(null)} className="text-indigo-200 hover:text-white transition-colors">Cancel</button>
+                  <button onClick={() => setSelectedTask(null)} className="text-indigo-200 hover:text-white">Cancel</button>
                 </div>
                 <p className="text-xs text-indigo-100">{selectedTask.instructions}</p>
               </div>
               <form onSubmit={handleSubmit} className="p-6 space-y-6">
                 <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-widest">Questions to Answer in PDF</h4>
+                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-widest">Questions to Answer</h4>
                   <ul className="space-y-2">
                     {selectedTask.questions.map((q, idx) => (
                       <li key={q.id} className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg flex justify-between">
@@ -141,10 +139,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
                     <span className="text-sm font-bold text-gray-700 text-center truncate w-full px-2">
-                      {file ? file.name : 'Upload Assignment PDF'}
-                    </span>
-                    <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">
-                      {file ? 'Click to change file' : 'Click to select or drag and drop'}
+                      {file ? file.name : 'Upload PDF Document'}
                     </span>
                   </div>
                 </div>
@@ -153,41 +148,33 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                   type="submit"
                   disabled={isSubmitting || !file}
                   className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                    (isSubmitting || !file) ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                    (isSubmitting || !file) ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
                 >
-                  {isSubmitting ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      AI Analyzing PDF...
-                    </span>
-                  ) : 'Submit PDF for Grading'}
+                  {isSubmitting ? 'AI Analyzing...' : 'Submit Assignment'}
                 </button>
               </form>
             </div>
           ) : (
             <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Available Tasks</h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Assignments</h2>
               {tasks.length === 0 ? (
                 <div className="p-8 text-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400">
-                  No assignments available yet.
+                  No active tasks.
                 </div>
               ) : (
                 tasks.map(task => {
                   const alreadyDone = mySubmissions.some(s => s.taskId === task.id);
                   return (
-                    <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-all">
+                    <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group">
                       <div>
                         <h4 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{task.title}</h4>
                         <p className="text-xs text-gray-500">{task.questions.length} Questions</p>
                       </div>
                       {alreadyDone ? (
-                        <span className="text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded">Done</span>
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded">Submitted</span>
                       ) : (
-                        <button onClick={() => startTask(task)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all">Start</button>
+                        <button onClick={() => startTask(task)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all">Start Task</button>
                       )}
                     </div>
                   );
@@ -197,13 +184,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           )}
         </div>
 
-        {/* Feedback Feed */}
         <div className="lg:col-span-2">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Learning Journal</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Learning Records</h2>
           <div className="space-y-6">
             {mySubmissions.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-2xl border-2 border-dashed text-gray-400 italic">
-                Your AI feedback history will appear here.
+                Feedback will appear here after submission.
               </div>
             ) : (
               [...mySubmissions].reverse().map(sub => (
@@ -211,19 +197,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                   <div className="p-6">
                     <div className="flex justify-between items-center mb-4">
                       <h4 className="text-lg font-bold text-gray-900">{sub.taskTitle}</h4>
-                      <div className="px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-full uppercase tracking-tighter">
-                        AI Certified Feedback
-                      </div>
+                      <div className="text-sm font-bold text-indigo-600">Grade: {sub.score}%</div>
                     </div>
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100">
-                      <div className="flex justify-between items-center mb-2">
-                        <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Detailed Assessment</h5>
-                        <div className="text-sm font-bold text-indigo-600">Score: {sub.score}%</div>
-                      </div>
                       <p className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap">{sub.feedback}</p>
-                      <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
-                        <span className="text-[10px] text-gray-400">Submitted on {new Date(sub.submittedAt).toLocaleDateString()}</span>
-                      </div>
                     </div>
                   </div>
                 </div>

@@ -11,12 +11,18 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [tasks, setTasks] = useState<AssignmentTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<AssignmentTask | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mySubmissions, setMySubmissions] = useState<Submission[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
   }, []);
 
   const loadData = () => {
@@ -30,6 +36,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const startTask = (task: AssignmentTask) => {
     setSelectedTask(task);
     setFile(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,7 +49,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         alert('Please upload a PDF file.');
         return;
       }
+      
+      // Cleanup previous preview URL if it exists
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      const url = URL.createObjectURL(selectedFile);
       setFile(selectedFile);
+      setPreviewUrl(url);
     }
   };
 
@@ -83,6 +101,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       
       setSelectedTask(null);
       setFile(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
       loadData();
       alert('PDF assignment analyzed and graded by AI!');
     } catch (error) {
@@ -120,27 +142,55 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     ))}
                   </ul>
 
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`mt-6 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all ${
-                      file ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      accept="application/pdf"
-                      onChange={handleFileChange}
-                    />
-                    <svg className={`w-12 h-12 mb-3 ${file ? 'text-indigo-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-sm font-bold text-gray-700">
-                      {file ? file.name : 'Upload Assignment PDF'}
-                    </span>
-                    <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">Click to select or drag and drop</span>
-                  </div>
+                  {!previewUrl ? (
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-6 border-2 border-dashed border-gray-300 hover:border-indigo-300 hover:bg-gray-50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all"
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="application/pdf"
+                        onChange={handleFileChange}
+                      />
+                      <svg className="w-12 h-12 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm font-bold text-gray-700">Upload Assignment PDF</span>
+                      <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">Click to select or drag and drop</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-bold text-indigo-600 uppercase">Document Preview</h4>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setFile(null);
+                            if (previewUrl) URL.revokeObjectURL(previewUrl);
+                            setPreviewUrl(null);
+                          }}
+                          className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase"
+                        >
+                          Change File
+                        </button>
+                      </div>
+                      <div className="relative w-full h-64 border border-gray-200 rounded-xl overflow-hidden bg-gray-50 shadow-inner">
+                        <iframe 
+                          src={previewUrl} 
+                          className="w-full h-full border-none"
+                          title="PDF Preview"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
+                        <svg className="w-4 h-4 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-xs font-medium text-indigo-900 truncate flex-grow">{file?.name}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -210,7 +260,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                       </div>
                     </div>
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100">
-                      <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Detailed Assessment</h5>
+                      <div className="flex justify-between items-center mb-2">
+                        <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Detailed Assessment</h5>
+                        <div className="text-sm font-bold text-indigo-600">Score: {sub.score}%</div>
+                      </div>
                       <p className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap">{sub.feedback}</p>
                     </div>
                   </div>

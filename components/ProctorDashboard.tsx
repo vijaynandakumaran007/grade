@@ -222,7 +222,7 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
               <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex flex-col justify-center">
                 <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-widest mb-1">Scale Plan</h4>
                 <p className="text-sm text-indigo-700 mb-4 font-medium">To implement a "real" database, move this data to PostgreSQL or MongoDB.</p>
-                <button onClick={() => setActiveTab('architecture')} className="text-indigo-600 font-bold text-sm underline hover:text-indigo-800 text-left">View ER Schema -></button>
+                <button onClick={() => setActiveTab('architecture')} className="text-indigo-600 font-bold text-sm underline hover:text-indigo-800 text-left">View ER Schema &rarr;</button>
               </div>
             </div>
 

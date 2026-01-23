@@ -16,7 +16,7 @@ export const gradeSubmission = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const questionPrompt = questions.map((q, idx) => {
-    return `Question ${idx + 1} (${q.marks} marks): ${q.text}`;
+    return `Question ${idx + 1} (${q.marks} marks possible): ${q.text}`;
   }).join("\n");
 
   const pdfPart = {
@@ -27,7 +27,7 @@ export const gradeSubmission = async (
   };
 
   const textPart = {
-    text: `Assignment Title: ${title}\n\nPlease evaluate the attached student assignment PDF based on these specific questions:\n\n${questionPrompt}\n\nProvide constructive feedback for the student and a total numerical score.`
+    text: `Assignment Title: ${title}\n\nStrict Grading Criteria:\n${questionPrompt}\n\nInstructions: Analyze the attached PDF document. For each question, find the corresponding answer in the student's work. Evaluate the accuracy, depth, and clarity. Sum the marks to provide a final score.`
   };
 
   try {
@@ -35,23 +35,25 @@ export const gradeSubmission = async (
       model: MODEL_NAME,
       contents: { parts: [pdfPart, textPart] },
       config: {
-        systemInstruction: `You are an expert academic proctor. 
-        Analyze the provided PDF content carefully against the requested questions.
-        1. Provide a consolidated constructive feedback summary for the student.
-        2. Calculate a total numerical score by summing up marks awarded for each question based on the PDF content.
-        Ensure the score does not exceed the total possible marks.
-        Return the result in valid JSON format.`,
+        systemInstruction: `You are a world-class academic proctor and subject matter expert. 
+        Your goal is to provide a 'PERFECT' correction.
+        1. BE RIGOROUS: Only award marks for information explicitly present or correctly inferred in the PDF.
+        2. DETAILED FEEDBACK: For every question, mention what the student did well and exactly where they lost marks.
+        3. FORMATTING: Use professional academic language.
+        4. TOTAL SCORE: Sum the marks for all questions. The total score must be a number representing the percentage or total points earned.
+        
+        Output MUST be valid JSON.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             feedback: {
               type: Type.STRING,
-              description: "Constructive feedback summary for the student.",
+              description: "A comprehensive, bulleted breakdown of the student's performance across all questions found in the PDF.",
             },
             score: {
               type: Type.NUMBER,
-              description: "Total numerical grade awarded.",
+              description: "The calculated total score (0-100 or total points).",
             },
           },
           required: ["feedback", "score"],
@@ -63,6 +65,6 @@ export const gradeSubmission = async (
     return result as GradingResponse;
   } catch (error) {
     console.error("Gemini API Error:", error);
-    throw error; // Re-throw to be handled by the UI
+    throw error;
   }
 };

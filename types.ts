@@ -1,5 +1,7 @@
 
 export type Role = 'STUDENT' | 'PROCTOR';
+export type TaskStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'GRADED';
 
 export interface User {
   id: string;
@@ -31,6 +33,7 @@ export interface AssignmentTask {
   instructions: string;
   questions: Question[];
   createdAt: string;
+  status: TaskStatus;
 }
 
 export interface Answer {
@@ -48,7 +51,9 @@ export interface Submission {
   feedback: string;
   score: number;
   submittedAt: string;
-  status: 'GRADED';
+  status: SubmissionStatus;
+  draftFileData?: string; // Base64 of the PDF for drafts
+  draftFileName?: string;
 }
 
 export interface GradingResponse {

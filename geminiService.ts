@@ -27,20 +27,20 @@ export const gradeSubmission = async (
   };
 
   const textPart = {
-    text: `Assignment Title: ${title}\n\nStrict Grading Criteria:\n${questionPrompt}\n\nInstructions: Analyze the attached PDF document. For each question, find the corresponding answer in the student's work. Evaluate the accuracy, depth, and clarity. Sum the marks to provide a final score.`
+    text: `Assignment Title: ${title}\n\nStrict Grading Criteria:\n${questionPrompt}\n\nInstructions: Analyze the attached PDF document. For each question, find the corresponding answer in the student's work. Evaluate the accuracy, depth, and clarity. Sum the marks to provide a final score. Provide a breakdown of marks for each question in the feedback.`
   };
 
   try {
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: { parts: [pdfPart, textPart] },
+      contents: [{ parts: [pdfPart, textPart] }],
       config: {
         systemInstruction: `You are a world-class academic proctor and subject matter expert. 
         Your goal is to provide a 'PERFECT' correction.
         1. BE RIGOROUS: Only award marks for information explicitly present or correctly inferred in the PDF.
         2. DETAILED FEEDBACK: For every question, mention what the student did well and exactly where they lost marks.
-        3. FORMATTING: Use professional academic language.
-        4. TOTAL SCORE: Sum the marks for all questions. The total score must be a number representing the percentage or total points earned.
+        3. FORMATTING: Use professional academic language and structure feedback as a bulleted list.
+        4. TOTAL SCORE: Sum the marks for all questions. The total score must be a number representing the percentage (0-100).
         
         Output MUST be valid JSON.`,
         responseMimeType: "application/json",
@@ -49,11 +49,11 @@ export const gradeSubmission = async (
           properties: {
             feedback: {
               type: Type.STRING,
-              description: "A comprehensive, bulleted breakdown of the student's performance across all questions found in the PDF.",
+              description: "A comprehensive, bulleted breakdown of the student's performance across all questions.",
             },
             score: {
               type: Type.NUMBER,
-              description: "The calculated total score (0-100 or total points).",
+              description: "The calculated total score percentage (0-100).",
             },
           },
           required: ["feedback", "score"],

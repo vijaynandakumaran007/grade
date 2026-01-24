@@ -24,26 +24,24 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
     return <Navigate to={currentUser.role === 'STUDENT' ? '/student' : '/proctor'} replace />;
   }
 
-  // Safety check for BOTH Students and Proctors
   if (!currentUser.isApproved) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full text-center space-y-4 p-8 bg-white shadow-xl rounded-2xl border border-yellow-100">
-          <div className="mx-auto w-16 h-16 bg-yellow-100 flex items-center justify-center rounded-full">
-            <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="max-w-md w-full text-center space-y-6 p-10 bg-white shadow-2xl rounded-3xl border border-yellow-100 animate-fadeIn">
+          <div className="mx-auto w-20 h-20 bg-yellow-50 flex items-center justify-center rounded-full">
+            <svg className="w-10 h-10 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Access Pending Verification</h2>
-          <p className="text-gray-600">
-            Welcome, <span className="font-semibold">{currentUser.name}</span>. Your account (<span className="text-indigo-600 font-bold">{currentUser.role}</span>) is currently awaiting manual verification by a senior administrator.
+          <h2 className="text-3xl font-extrabold text-gray-900">Access Pending</h2>
+          <p className="text-gray-600 text-lg leading-relaxed">
+            Welcome, <span className="font-bold text-gray-900">{currentUser.name}</span>. Your account is currently in the verification queue. A senior administrator will review your access request shortly.
           </p>
-          <button 
-            onClick={onLogout}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-all"
-          >
-            Sign Out
-          </button>
+          <div className="pt-4">
+            <button onClick={onLogout} className="w-full py-3 px-4 rounded-xl text-indigo-600 bg-indigo-50 font-bold hover:bg-indigo-100 transition-all">
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -56,24 +54,15 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('currentUser');
-      if (savedUser) {
-        setCurrentUser(JSON.parse(savedUser));
-      }
-    } catch (err) {
-      console.error("Hydration Error:", err);
-      localStorage.removeItem('currentUser'); // Clean up corrupted state
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
     }
   }, []);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    try {
-      localStorage.setItem('currentUser', JSON.stringify(user));
-    } catch (err) {
-      console.error("Failed to save login session:", err);
-    }
+    localStorage.setItem('currentUser', JSON.stringify(user));
   };
 
   const handleLogout = () => {

@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import { User } from '../types';
 
 interface LoginProps {
@@ -13,34 +14,47 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const users: User[] = JSON.parse(localStorage.getItem('users') || '[]');
-    const user = users.find(u => u.email === email);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (user) {
-      onLogin(user);
-      navigate(user.role === 'STUDENT' ? '/student' : '/proctor');
-    } else {
-      // Create a default Proctor account for testing if none exists
-      if (email === 'proctor@test.com' && password === 'admin') {
-        const proctor: User = {
-          id: 'admin-1',
-          name: 'Global Proctor',
-          email: 'proctor@test.com',
-          role: 'PROCTOR',
-          isApproved: true,
-          registrationDate: new Date().toISOString()
-        };
-        const updatedUsers = [...users, proctor];
-        localStorage.setItem('users', JSON.stringify(updatedUsers));
-        onLogin(proctor);
-        navigate('/proctor');
-      } else {
-        setError('Invalid credentials or user does not exist.');
+      if (authError) throw authError;
+
+      if (authData.session) {
+        // User profile fetching is handled in App.tsx via onAuthStateChange
+        // But we might want to wait or just navigate.
+        // Let's fetch the role here to navigate correctly immediately, 
+        // although App.tsx will update context, navigation might happen before context update if we are not careful.
+        // However, App.tsx handles routing protection.
+        // Let's just fetch the user profile quickly to know where to redirect.
+
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', authData.session.user.id)
+          .single();
+
+        if (userError) throw userError;
+
+        if (userData) {
+          navigate(userData.role === 'STUDENT' ? '/student' : '/proctor');
+        }
       }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      let msg = err.message || 'Failed to login';
+      if (msg.includes('Invalid login credentials')) {
+        msg = 'Incorrect email or password. Please try again.';
+      } else if (msg.includes('Email not confirmed')) {
+        msg = 'Please verify your email address before logging in.';
+      }
+      setError(msg);
     }
   };
 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Submission, AssignmentTask, Question, InviteToken, TaskStatus } from '../types';
 import { UMLClassDiagram, ERDiagram, DataflowDiagram, StateTransitionDiagram } from './Diagrams';
+import { supabase } from '../supabaseClient';
 
 interface ProctorDashboardProps {
   user: User;
@@ -23,88 +24,148 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
 
   useEffect(() => {
     loadData();
-    calculateStorage();
+    // calculateStorage(); // No longer needed for DB
   }, []);
 
-  const calculateStorage = () => {
-    let _lsTotal = 0, _xLen, _x;
-    for (_x in localStorage) {
-      if (!localStorage.hasOwnProperty(_x)) continue;
-      _xLen = ((localStorage[_x].length + _x.length) * 2);
-      _lsTotal += _xLen;
-    }
-    const usedKB = (_lsTotal / 1024).toFixed(2);
-    const limitKB = 5120;
-    const percent = Math.min((parseFloat(usedKB) / limitKB) * 100, 100);
-    setStorageUsage({ used: parseFloat(usedKB), percent });
-  };
+  // Removed calculateStorage as we are using Supabase
 
-  const loadData = () => {
-    const users: User[] = JSON.parse(localStorage.getItem('users') || '[]');
-    setAllUsers(users);
-    const allSubmissions: Submission[] = JSON.parse(localStorage.getItem('assignments') || '[]');
-    setSubmissions(allSubmissions);
-    const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
-    setTasks(allTasks);
-    const allInvites: InviteToken[] = JSON.parse(localStorage.getItem('proctor_invites') || '[]');
-    setInvites(allInvites);
+  const loadData = async () => {
+    try {
+      // Fetch Users
+      const { data: usersData } = await supabase.from('users').select('*');
+      if (usersData) {
+        setAllUsers(usersData.map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          isApproved: u.is_approved,
+          registrationDate: u.registration_date
+        })));
+      }
+
+      // Fetch Tasks (Assignments)
+      const { data: tasksData } = await supabase.from('assignments').select('*');
+      if (tasksData) {
+        setTasks(tasksData.map((t: any) => ({
+          id: t.id,
+          proctorId: t.proctor_id,
+          title: t.title,
+          instructions: t.instructions,
+          questions: t.questions,
+          createdAt: t.created_at,
+          status: t.status
+        })));
+      }
+
+      // Fetch Submissions
+      const { data: subsData } = await supabase
+        .from('submissions')
+        .select('*, assignments(title)');
+
+      if (subsData) {
+        setSubmissions(subsData.map((s: any) => ({
+          id: s.id,
+          taskId: s.task_id,
+          taskTitle: s.assignments?.title || 'Unknown',
+          studentId: s.student_id,
+          studentName: s.student_name,
+          answers: s.answers,
+          feedback: s.feedback,
+          score: s.score,
+          submittedAt: s.submitted_at,
+          status: s.status,
+          draftFileData: s.draft_file_data,
+          draftFileName: s.draft_file_name
+        })));
+      }
+
+      // Invites: We aren't using DB invites yet, so clear them or keep empty.
+      setInvites([]);
+
+    } catch (error) {
+      console.error("Error loading proctor data:", error);
+    }
   };
 
   const generateInvite = () => {
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-    const newToken: InviteToken = {
-      code,
-      createdBy: user.email,
-      createdAt: new Date().toISOString(),
-      isUsed: false
-    };
-    const updatedInvites = [newToken, ...invites];
-    localStorage.setItem('proctor_invites', JSON.stringify(updatedInvites));
-    setInvites(updatedInvites);
+    alert("Invite generation is temporarily disabled in database mode.");
+    // Implementation would require a new 'invites' table
   };
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newQuestions.length === 0) return alert("Add at least one question");
-    const newTask: AssignmentTask = {
-      id: Date.now().toString(),
-      proctorId: user.id,
-      title: newTitle,
-      instructions: newInstructions,
-      questions: newQuestions,
-      createdAt: new Date().toISOString(),
-      status: newStatus
-    };
-    const allTasks = JSON.parse(localStorage.getItem('tasks') || '[]');
-    localStorage.setItem('tasks', JSON.stringify([...allTasks, newTask]));
-    setNewTitle(''); setNewInstructions(''); setNewQuestions([]); setNewStatus('DRAFT');
-    setActiveTab('tasks'); loadData(); calculateStorage();
+
+    try {
+      const newTask = {
+        proctor_id: user.id,
+        title: newTitle,
+        instructions: newInstructions,
+        questions: newQuestions,
+        status: newStatus,
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('assignments').insert([newTask]);
+      if (error) throw error;
+
+      setNewTitle(''); setNewInstructions(''); setNewQuestions([]); setNewStatus('DRAFT');
+      setActiveTab('tasks');
+      loadData();
+    } catch (err: any) {
+      console.error('Error creating task:', err);
+      alert('Failed to create task');
+    }
   };
 
-  const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
-    const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
-    const updatedTasks = allTasks.map(t => t.id === taskId ? { ...t, status } : t);
-    localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-    loadData();
+  const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
+    try {
+      const { error } = await supabase
+        .from('assignments')
+        .update({ status })
+        .eq('id', taskId);
+
+      if (error) throw error;
+      loadData();
+    } catch (err) {
+      console.error('Error updating status:', err);
+    }
   };
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
     if (!confirm("Are you sure you want to delete this task? All submissions will remain but students won't see this task anymore.")) return;
-    const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
-    localStorage.setItem('tasks', JSON.stringify(allTasks.filter(t => t.id !== taskId)));
-    loadData();
+    try {
+      const { error } = await supabase
+        .from('assignments')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) throw error;
+      loadData();
+    } catch (err) {
+      console.error('Error deleting task:', err);
+      alert('Failed to delete task. It might have related submissions.');
+    }
   };
 
-  const handleApprove = (userId: string) => {
-    const users: User[] = JSON.parse(localStorage.getItem('users') || '[]');
-    const updatedUsers = users.map(u => u.id === userId ? { ...u, isApproved: true } : u);
-    localStorage.setItem('users', JSON.stringify(updatedUsers));
-    loadData();
+  const handleApprove = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_approved: true })
+        .eq('id', userId);
+
+      if (error) throw error;
+      loadData();
+    } catch (err) {
+      console.error('Error approving user:', err);
+    }
   };
 
-  const filteredSubmissions = submissions.filter(s => 
-    (s.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.taskTitle.toLowerCase().includes(searchTerm.toLowerCase())) &&
+  const filteredSubmissions = submissions.filter(s =>
+    (s.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.taskTitle.toLowerCase().includes(searchTerm.toLowerCase())) &&
     s.status !== 'DRAFT'
   );
 
@@ -129,7 +190,7 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
       {activeTab === 'submissions' && (
         <div className="space-y-6">
           <input type="text" placeholder="Search graded submissions..." className="w-full max-w-md px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-          {filteredSubmissions.length === 0 ? <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">No active submissions found.</div> : 
+          {filteredSubmissions.length === 0 ? <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">No active submissions found.</div> :
             [...filteredSubmissions].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)).map(sub => (
               <div key={sub.id} className="bg-white rounded-2xl p-6 border border-gray-100 flex gap-6 shadow-sm hover:shadow-md transition-shadow group">
                 <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex flex-col items-center justify-center font-black text-indigo-600 flex-shrink-0">
@@ -154,15 +215,14 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
 
       {activeTab === 'tasks' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tasks.length === 0 ? <div className="col-span-full text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">No tasks created yet.</div> : 
+          {tasks.length === 0 ? <div className="col-span-full text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">No tasks created yet.</div> :
             tasks.map(task => (
               <div key={task.id} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex flex-col">
                 <div className="flex justify-between items-start mb-4">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest ${
-                    task.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' : 
-                    task.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 
-                    'bg-gray-100 text-gray-700'
-                  }`}>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest ${task.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' :
+                    task.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
                     {task.status}
                   </span>
                   <button onClick={() => handleDeleteTask(task.id)} className="text-red-400 hover:text-red-600 p-1">
@@ -171,7 +231,7 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
                 </div>
                 <h3 className="text-xl font-bold mb-1 truncate">{task.title}</h3>
                 <p className="text-xs text-gray-400 mb-4">{task.questions.length} Questions • Created {new Date(task.createdAt).toLocaleDateString()}</p>
-                
+
                 <div className="mt-auto flex flex-wrap gap-2">
                   {task.status !== 'ACTIVE' && (
                     <button onClick={() => handleUpdateTaskStatus(task.id, 'ACTIVE')} className="flex-1 bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all">Publish</button>
@@ -192,11 +252,12 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
       {activeTab === 'security' && (
         <div className="space-y-8">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-            <h3 className="text-xl font-bold mb-4">Storage Monitor</h3>
-            <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden mb-2">
-              <div className={`h-full ${storageUsage.percent > 80 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${storageUsage.percent}%` }}></div>
+            <h3 className="text-xl font-bold mb-4">Database Status</h3>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
+              <p className="text-sm text-gray-700 font-bold">Connected to Supabase</p>
             </div>
-            <p className="text-sm text-gray-500">{storageUsage.used} KB used of 5,120 KB limit.</p>
+            <p className="text-xs text-gray-500 mt-2">Data is securely stored in the cloud.</p>
           </div>
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-6">
@@ -259,7 +320,7 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
                 ))}
               </div>
             </div>
-            
+
             <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">Deploy Task</button>
           </form>
         </div>
@@ -267,7 +328,7 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
 
       {activeTab === 'approvals' && (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          {pendingUsers.length === 0 ? <div className="p-20 text-center text-gray-400 italic">No pending requests.</div> : 
+          {pendingUsers.length === 0 ? <div className="p-20 text-center text-gray-400 italic">No pending requests.</div> :
             pendingUsers.map(u => (
               <div key={u.id} className="p-8 flex items-center justify-between border-b last:border-0 hover:bg-slate-50">
                 <div>

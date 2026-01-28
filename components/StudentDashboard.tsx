@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Submission, AssignmentTask } from '../types';
 import { gradeSubmission } from '../geminiService';
+import { supabase } from '../supabaseClient';
 
 interface StudentDashboardProps {
   user: User;
@@ -17,16 +18,82 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   useEffect(() => {
     loadData();
+    // Subscribe to changes? For now just load once.
   }, []);
 
-  const loadData = () => {
+  const loadData = async () => {
     try {
-      const allTasks: AssignmentTask[] = JSON.parse(localStorage.getItem('tasks') || '[]');
-      // Students only see ACTIVE tasks. Archived tasks are hidden and cannot be submitted.
-      setTasks(allTasks.filter(t => t.status === 'ACTIVE'));
+      // Fetch active tasks
+      const { data: activeTasks, error: tasksError } = await supabase
+        .from('assignments')
+        .select('*')
+        .eq('status', 'ACTIVE');
 
-      const allSubs: Submission[] = JSON.parse(localStorage.getItem('assignments') || '[]');
-      setMySubmissions(allSubs.filter(s => s.studentId === user.id));
+      if (tasksError) console.error('Error loading tasks:', tasksError);
+      else {
+        // Map snake_case to camelCase
+        setTasks(activeTasks.map((t: any) => ({
+          id: t.id,
+          proctorId: t.proctor_id,
+          title: t.title,
+          instructions: t.instructions,
+          questions: t.questions,
+          createdAt: t.created_at,
+          status: t.status
+        })));
+      }
+
+      // Fetch my submissions
+      const { data: subs, error: subsError } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('student_id', user.id);
+
+      if (subsError) console.error('Error loading submissions:', subsError);
+      else {
+        setMySubmissions(subs.map((s: any) => ({
+          id: s.id,
+          taskId: s.task_id,
+          taskTitle: '', // We need to join or fetch title. For now let's leave it or fetch it.
+          // Actually, in the dashboard view, we might need it. 
+          // Supabase join: .select('*, assignments(title)')
+          // Let's do a simple join if possible or just map it from tasks if loaded.
+          // But tasks only has ACTIVE ones. User might have submissions for archived tasks.
+          // Let's fetch the task title via join.
+          studentId: s.student_id,
+          studentName: s.student_name,
+          answers: s.answers,
+          feedback: s.feedback,
+          score: s.score,
+          submittedAt: s.submitted_at,
+          status: s.status,
+          draftFileData: s.draft_file_data,
+          draftFileName: s.draft_file_name
+        })));
+
+        // Refetch submissions with task titles
+        const { data: subsWithTitle, error: joinError } = await supabase
+          .from('submissions')
+          .select('*, assignments(title)')
+          .eq('student_id', user.id);
+
+        if (!joinError && subsWithTitle) {
+          setMySubmissions(subsWithTitle.map((s: any) => ({
+            id: s.id,
+            taskId: s.task_id,
+            taskTitle: s.assignments?.title || 'Unknown Task',
+            studentId: s.student_id,
+            studentName: s.student_name,
+            answers: s.answers,
+            feedback: s.feedback,
+            score: s.score,
+            submittedAt: s.submitted_at,
+            status: s.status,
+            draftFileData: s.draft_file_data,
+            draftFileName: s.draft_file_name
+          })));
+        }
+      }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
     }
@@ -36,8 +103,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     // Check if there is an existing draft for this task
     const draft = mySubmissions.find(s => s.taskId === task.id && s.status === 'DRAFT');
     if (draft && draft.draftFileData) {
-      // Re-construct a file-like object or just state
-      // For simplicity in this local storage app, we just handle the base64
+      // In a real app we'd load the file from URL. Here we have base64.
+      // We can't easily turn base64 back to a File object for the input, but we can show it's there.
+      // For simplicity, we just set the selected task and let them re-upload if needed, or just submit.
     }
     setSelectedTask(task);
     setFile(null);
@@ -68,31 +136,46 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   const saveDraft = async () => {
     if (!selectedTask || !file) return;
-    
-    const pdfBase64 = await convertToBase64(file);
-    const draftSubmission: Submission = {
-      id: Date.now().toString(),
-      taskId: selectedTask.id,
-      taskTitle: selectedTask.title,
-      studentId: user.id,
-      studentName: user.name,
-      answers: [],
-      feedback: 'Draft saved. Not yet graded.',
-      score: 0,
-      submittedAt: new Date().toISOString(),
-      status: 'DRAFT',
-      draftFileData: pdfBase64,
-      draftFileName: file.name
-    };
 
-    const allSubs = JSON.parse(localStorage.getItem('assignments') || '[]');
-    // Remove existing draft for same task if exists
-    const filteredSubs = allSubs.filter((s: Submission) => !(s.taskId === selectedTask.id && s.status === 'DRAFT' && s.studentId === user.id));
-    
-    localStorage.setItem('assignments', JSON.stringify([...filteredSubs, draftSubmission]));
-    loadData();
-    alert('Draft saved successfully.');
-    setSelectedTask(null);
+    try {
+      const pdfBase64 = await convertToBase64(file);
+
+      // Check if exists
+      const existing = mySubmissions.find(s => s.taskId === selectedTask.id && s.status === 'DRAFT');
+
+      const submissionData = {
+        task_id: selectedTask.id,
+        student_id: user.id,
+        student_name: user.name,
+        status: 'DRAFT',
+        draft_file_data: pdfBase64,
+        draft_file_name: file.name,
+        submitted_at: new Date().toISOString()
+      };
+
+      let error;
+      if (existing) {
+        const { error: updateError } = await supabase
+          .from('submissions')
+          .update(submissionData)
+          .eq('id', existing.id);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('submissions')
+          .insert([submissionData]);
+        error = insertError;
+      }
+
+      if (error) throw error;
+
+      loadData();
+      alert('Draft saved successfully.');
+      setSelectedTask(null);
+    } catch (err: any) {
+      console.error('Save Draft Error:', err);
+      alert('Failed to save draft');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,29 +185,42 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     setIsSubmitting(true);
     try {
       const pdfBase64 = await convertToBase64(file);
-      
-      // Temporary "SUBMITTED" state (Visual only since it's client-side)
+
+      // AI Grading
       const result = await gradeSubmission(selectedTask.title, selectedTask.questions, pdfBase64);
-      
-      const newSubmission: Submission = {
-        id: Date.now().toString(),
-        taskId: selectedTask.id,
-        taskTitle: selectedTask.title,
-        studentId: user.id,
-        studentName: user.name,
-        answers: [],
-        feedback: result.feedback,
+
+      // Check if exists (draft)
+      const existing = mySubmissions.find(s => s.taskId === selectedTask.id && s.status === 'DRAFT');
+
+      const submissionData = {
+        task_id: selectedTask.id,
+        student_id: user.id,
+        student_name: user.name,
+        status: 'GRADED', // Auto-grading
+        draft_file_data: pdfBase64, // Keep the file
+        draft_file_name: file.name,
+        submitted_at: new Date().toISOString(),
         score: result.score,
-        submittedAt: new Date().toISOString(),
-        status: 'GRADED'
+        feedback: result.feedback,
+        answers: [] // We don't have parsed answers structure from AI yet, just feedback
       };
 
-      const allSubs = JSON.parse(localStorage.getItem('assignments') || '[]');
-      // Cleanup any draft for this specific task
-      const filteredSubs = allSubs.filter((s: Submission) => !(s.taskId === selectedTask.id && s.status === 'DRAFT' && s.studentId === user.id));
-      
-      localStorage.setItem('assignments', JSON.stringify([...filteredSubs, newSubmission]));
-      
+      let error;
+      if (existing) {
+        const { error: updateError } = await supabase
+          .from('submissions')
+          .update(submissionData)
+          .eq('id', existing.id);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('submissions')
+          .insert([submissionData]);
+        error = insertError;
+      }
+
+      if (error) throw error;
+
       setSelectedTask(null);
       setFile(null);
       loadData();
@@ -149,7 +245,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         <div className="lg:col-span-1">
           {selectedTask ? (
             <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-indigo-100 sticky top-8">
@@ -172,16 +268,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     ))}
                   </ul>
 
-                  <div 
+                  <div
                     onClick={() => fileInputRef.current?.click()}
-                    className={`mt-6 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all ${
-                      file ? 'border-emerald-300 bg-emerald-50' : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
-                    }`}
+                    className={`mt-6 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-emerald-300 bg-emerald-50' : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
+                      }`}
                   >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
                       accept="application/pdf"
                       onChange={handleFileChange}
                     />
@@ -206,9 +301,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                   <button
                     type="submit"
                     disabled={isSubmitting || !file}
-                    className={`flex-[2] py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                      (isSubmitting || !file) ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
+                    className={`flex-[2] py-3 rounded-xl font-bold text-white shadow-lg transition-all ${(isSubmitting || !file) ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                      }`}
                   >
                     {isSubmitting ? 'AI Analyzing...' : 'Submit Final'}
                   </button>
@@ -225,7 +319,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               ) : (
                 tasks.map(task => {
                   const submission = mySubmissions.find(s => s.taskId === task.id);
-                  
+
                   return (
                     <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group">
                       <div className="flex-1 min-w-0 pr-4">

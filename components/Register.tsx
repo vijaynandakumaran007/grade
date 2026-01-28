@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Role, InviteToken } from '../types';
+import { supabase } from '../supabaseClient';
+import { User, Role } from '../types';
 
 const Register: React.FC = () => {
   const [name, setName] = useState('');
@@ -12,49 +13,71 @@ const Register: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    const users: User[] = JSON.parse(localStorage.getItem('users') || '[]');
-    const invites: InviteToken[] = JSON.parse(localStorage.getItem('proctor_invites') || '[]');
-    
-    if (users.some(u => u.email === email)) {
-      setError('Email already registered');
-      return;
-    }
 
     if (role === 'PROCTOR') {
-      // Logic: Master code works for first setup, otherwise must use a valid invite token
+      // Logic: Master code works for first setup
       const isMasterCode = proctorCode === 'ADMIN2025';
-      const inviteIndex = invites.findIndex(inv => inv.code === proctorCode && !inv.isUsed);
 
-      if (!isMasterCode && inviteIndex === -1) {
-        setError('Invalid or already used Proctor Invite Code.');
+      if (!isMasterCode) {
+        // For now, only Master Code is supported in this Supabase migration
+        setError('Invalid Proctor Invite Code.');
         return;
-      }
-
-      // Mark token as used if it was a dynamic token
-      if (inviteIndex !== -1) {
-        invites[inviteIndex].isUsed = true;
-        invites[inviteIndex].usedBy = email;
-        localStorage.setItem('proctor_invites', JSON.stringify(invites));
       }
     }
 
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      role: role,
-      isApproved: false, // ALL new users start as unapproved for security
-      registrationDate: new Date().toISOString()
-    };
+    try {
+      // 1. Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    localStorage.setItem('users', JSON.stringify([...users, newUser]));
-    
-    alert(`Account created! Please wait for a senior Proctor to approve your ${role.toLowerCase()} access.`);
-    navigate('/login');
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // 2. Insert user profile into 'users' table
+        const newUser: User = {
+          id: authData.user.id,
+          name,
+          email,
+          role: role,
+          isApproved: role === 'PROCTOR' && proctorCode === 'ADMIN2025', // Auto-approve if they have the master code
+          registrationDate: new Date().toISOString()
+        };
+
+        const { error: dbError } = await supabase
+          .from('users')
+          .insert([{
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            is_approved: newUser.isApproved,
+            registration_date: newUser.registrationDate
+          }]);
+
+        if (dbError) {
+          // If DB insert fails, we might want to clean up auth user, but for now just show error
+          console.error('Error creating user profile:', dbError);
+          setError('Account created but profile setup failed. Please contact support.');
+          return;
+        }
+
+        alert(`Account created! Please wait for a senior Proctor to approve your ${role.toLowerCase()} access.`);
+        navigate('/login');
+      }
+    } catch (err: any) {
+      let msg = err.message || 'Failed to register';
+      if (msg.includes('rate limit')) {
+        msg = 'Too many attempts. Please wait a while or check Supabase > Auth > Rate Limits.';
+      } else if (msg.includes('User already registered')) {
+        msg = 'This email is already registered. Please sign in.';
+      }
+      setError(msg);
+    }
   };
 
   return (
@@ -73,14 +96,14 @@ const Register: React.FC = () => {
         </div>
 
         <div className="flex p-1 bg-gray-100 rounded-xl">
-          <button 
+          <button
             type="button"
             onClick={() => setRole('STUDENT')}
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${role === 'STUDENT' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Student
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setRole('PROCTOR')}
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${role === 'PROCTOR' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}

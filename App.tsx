@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { supabase } from './supabaseClient';
 import { User, Role } from './types';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -54,20 +55,68 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+      }
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return;
+      }
+
+      if (data) {
+        // Map Supabase data to our User type (snake_case to camelCase if needed, but our schema uses snake_case column names and we need to map them)
+        // Actually, let's fix the schema or type mapping.
+        // The schema uses snake_case: is_approved, registration_date
+        // The type uses camelCase: isApproved, registrationDate
+        // We need to map it.
+        const user: User = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role as Role,
+          isApproved: data.is_approved,
+          registrationDate: data.registration_date,
+        };
+        setCurrentUser(user);
+      }
+    } catch (error) {
+      console.error('Unexpected error fetching user:', error);
+    }
+  };
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
   };
 
   return (
@@ -78,21 +127,21 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<Login onLogin={handleLogin} />} />
             <Route path="/register" element={<Register />} />
-            <Route 
-              path="/student" 
+            <Route
+              path="/student"
               element={
                 <ProtectedRoute allowedRoles={['STUDENT']} currentUser={currentUser} onLogout={handleLogout}>
                   <StudentDashboard user={currentUser!} />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/proctor" 
+            <Route
+              path="/proctor"
               element={
                 <ProtectedRoute allowedRoles={['PROCTOR']} currentUser={currentUser} onLogout={handleLogout}>
                   <ProctorDashboard user={currentUser!} />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route path="/" element={<Navigate to={currentUser ? (currentUser.role === 'STUDENT' ? '/student' : '/proctor') : '/login'} replace />} />
           </Routes>

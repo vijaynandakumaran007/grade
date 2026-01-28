@@ -5,16 +5,16 @@ import { GradingResponse, Question } from "./types";
 const MODEL_NAME = 'gemini-3-pro-preview';
 
 export const gradeSubmission = async (
-  title: string, 
-  questions: Question[], 
-  pdfBase64: string 
+  title: string,
+  questions: Question[],
+  pdfBase64: string
 ): Promise<GradingResponse> => {
-  if (!process.env.API_KEY) {
+  if (!import.meta.env.VITE_GEMINI_API_KEY) {
     throw new Error("API Key is missing. Please ensure your environment is configured.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
   const questionPrompt = questions.map((q, idx) => {
     return `Question ${idx + 1} (${q.marks} marks possible): ${q.text}`;
   }).join("\n");

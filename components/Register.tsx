@@ -60,17 +60,20 @@ const Register: React.FC = () => {
           }]);
 
         if (dbError) {
-          // If DB insert fails, we might want to clean up auth user, but for now just show error
-          console.error('Error creating user profile:', dbError);
-          setError('Account created but profile setup failed. Please contact support.');
+          console.error('Database Profile Insert Error:', dbError);
+          // If insert fails, it might be because the user is not signed in (RLS)
+          // or the user already exists in the auth table but not the profile table.
+          setError(`Account created but profile setup failed: ${dbError.message}`);
           return;
         }
 
-        alert(`Account created! Please wait for a senior Proctor to approve your ${role.toLowerCase()} access.`);
+        alert(`Account created! Please sign in with your ${newUser.email}`);
         navigate('/login');
       }
     } catch (err: any) {
+      console.error('Registration Catch Error:', err);
       let msg = err.message || 'Failed to register';
+      // ... (rest of error handling)
       if (msg.includes('rate limit')) {
         msg = 'Too many attempts. Please wait a while or check Supabase > Auth > Rate Limits.';
       } else if (msg.includes('User already registered')) {

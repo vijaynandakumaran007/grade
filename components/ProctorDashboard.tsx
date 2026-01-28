@@ -75,8 +75,8 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
           score: s.score,
           submittedAt: s.submitted_at,
           status: s.status,
-          draftFileData: s.draft_file_data,
-          draftFileName: s.draft_file_name
+          cloudinaryUrl: s.cloudinary_url,
+          fileName: s.file_name
         })));
       }
 
@@ -206,6 +206,12 @@ const ProctorDashboard: React.FC<ProctorDashboardProps> = ({ user }) => {
                     <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">Graded</span>
                   </div>
                   <p className="mt-2 text-sm text-gray-600 italic line-clamp-2">"{sub.feedback}"</p>
+                  {sub.cloudinaryUrl && (
+                    <a href={sub.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition-all">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                      View Submission PDF
+                    </a>
+                  )}
                 </div>
               </div>
             ))

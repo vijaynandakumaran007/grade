@@ -89,8 +89,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             score: s.score,
             submittedAt: s.submitted_at,
             status: s.status,
-            draftFileData: s.draft_file_data,
-            draftFileName: s.draft_file_name
+            cloudinaryUrl: s.cloudinary_url,
+            fileName: s.file_name
           })));
         }
       }
@@ -102,11 +102,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const startTask = (task: AssignmentTask) => {
     // Check if there is an existing draft for this task
     const draft = mySubmissions.find(s => s.taskId === task.id && s.status === 'DRAFT');
-    if (draft && draft.draftFileData) {
-      // In a real app we'd load the file from URL. Here we have base64.
-      // We can't easily turn base64 back to a File object for the input, but we can show it's there.
-      // For simplicity, we just set the selected task and let them re-upload if needed, or just submit.
-    }
     setSelectedTask(task);
     setFile(null);
   };
@@ -122,7 +117,27 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     }
   };
 
-  const convertToBase64 = (file: File): Promise<string> => {
+  const uploadToCloudinary = async (file: File): Promise<{ url: string, public_id: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
+
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/upload`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || 'Cloudinary upload failed');
+    }
+
+    const data = await response.json();
+    return { url: data.secure_url, public_id: data.public_id };
+  };
+
+  const convertToBase64ForAI = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -136,11 +151,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
   const saveDraft = async () => {
     if (!selectedTask || !file) return;
+    setIsSubmitting(true);
 
     try {
-      const pdfBase64 = await convertToBase64(file);
+      const cloudData = await uploadToCloudinary(file);
 
-      // Check if exists
       const existing = mySubmissions.find(s => s.taskId === selectedTask.id && s.status === 'DRAFT');
 
       const submissionData = {
@@ -148,8 +163,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
         student_id: user.id,
         student_name: user.name,
         status: 'DRAFT',
-        draft_file_data: pdfBase64,
-        draft_file_name: file.name,
+        cloudinary_url: cloudData.url,
+        cloudinary_public_id: cloudData.public_id,
+        file_name: file.name,
         submitted_at: new Date().toISOString()
       };
 
@@ -170,11 +186,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       if (error) throw error;
 
       loadData();
-      alert('Draft saved successfully.');
+      alert('Draft saved to cloud successfully.');
       setSelectedTask(null);
     } catch (err: any) {
       console.error('Save Draft Error:', err);
-      alert('Failed to save draft');
+      alert(`Storage Error: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -184,25 +202,26 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
     setIsSubmitting(true);
     try {
-      const pdfBase64 = await convertToBase64(file);
+      const cloudData = await uploadToCloudinary(file);
+      const pdfBase64 = await convertToBase64ForAI(file);
 
       // AI Grading
       const result = await gradeSubmission(selectedTask.title, selectedTask.questions, pdfBase64);
 
-      // Check if exists (draft)
       const existing = mySubmissions.find(s => s.taskId === selectedTask.id && s.status === 'DRAFT');
 
       const submissionData = {
         task_id: selectedTask.id,
         student_id: user.id,
         student_name: user.name,
-        status: 'GRADED', // Auto-grading
-        draft_file_data: pdfBase64, // Keep the file
-        draft_file_name: file.name,
+        status: 'GRADED',
+        cloudinary_url: cloudData.url,
+        cloudinary_public_id: cloudData.public_id,
+        file_name: file.name,
         submitted_at: new Date().toISOString(),
         score: result.score,
         feedback: result.feedback,
-        answers: [] // We don't have parsed answers structure from AI yet, just feedback
+        answers: []
       };
 
       let error;

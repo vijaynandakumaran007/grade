@@ -61,13 +61,11 @@ const Register: React.FC = () => {
 
         if (dbError) {
           console.error('Database Profile Insert Error:', dbError);
-          // If insert fails, it might be because the user is not signed in (RLS)
-          // or the user already exists in the auth table but not the profile table.
           setError(`Account created but profile setup failed: ${dbError.message}`);
           return;
         }
 
-        alert(`Account created! Please sign in with your ${newUser.email}`);
+        alert(`Account created successfully! Please sign in.`);
         navigate('/login');
       }
     } catch (err: any) {

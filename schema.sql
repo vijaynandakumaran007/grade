@@ -60,9 +60,23 @@ create table public.submissions (
   score numeric,
   submitted_at timestamp with time zone default timezone('utc', now()),
   status text check (status in ('DRAFT', 'SUBMITTED', 'GRADED')) default 'DRAFT',
-  draft_file_data text,
-  draft_file_name text
+  cloudinary_url text,
+  cloudinary_public_id text,
+  file_name text
 );
+
+-- Handle storage
+insert into storage.buckets (id, name, public) 
+values ('submissions', 'submissions', true)
+on conflict (id) do nothing;
+
+create policy "Anyone can upload submissions"
+  on storage.objects for insert
+  with check ( bucket_id = 'submissions' );
+
+create policy "Anyone can view submissions"
+  on storage.objects for select
+  using ( bucket_id = 'submissions' );
 
 alter table public.submissions enable row level security;
 

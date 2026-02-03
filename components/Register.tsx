@@ -19,7 +19,8 @@ const Register: React.FC = () => {
 
     if (role === 'PROCTOR') {
       // Logic: Master code works for first setup
-      const isMasterCode = proctorCode === 'ADMIN2025';
+      const masterCode = import.meta.env.VITE_PROCTOR_CODE || 'ADMIN2025';
+      const isMasterCode = proctorCode === masterCode;
 
       if (!isMasterCode) {
         // For now, only Master Code is supported in this Supabase migration
@@ -44,7 +45,7 @@ const Register: React.FC = () => {
           name,
           email,
           role: role,
-          isApproved: role === 'PROCTOR' && proctorCode === 'ADMIN2025', // Auto-approve if they have the master code
+          isApproved: role === 'PROCTOR' && proctorCode === (import.meta.env.VITE_PROCTOR_CODE || 'ADMIN2025'), // Auto-approve if they have the master code
           registrationDate: new Date().toISOString()
         };
 
